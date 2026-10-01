@@ -1,0 +1,50 @@
+---
+references:
+  - "File: /src/main_visual.cpp"
+generationTime: 2026-10-01T10:51:10.642Z
+---
+flowchart TD
+    A(("Start app_main")) --> B["Initialize NVS flash"]
+    B --> C{"NVS needs erase/re-init?"}
+    C -->|Yes| D["Erase NVS and re-initialize"]
+    C -->|No| E["Continue boot"]
+    D --> E
+    E --> F[["initI2c()"]]
+    F --> G[["initStatusLed()"]]
+    G --> H[["initFdc1004()"]]
+    H --> I{"FDC1004 init successful?"}
+    I -->|No| J["Log sensor init failure"]
+    I -->|Yes| K["Log sensor init success"]
+    J --> L[["setupAccessPoint()"]]
+    K --> L
+    L --> M[["setupWebServer()"]]
+    M --> M1["Register '/', '/data', '/download.csv' handlers"]
+    M1 -.-> RQ{"HTTP GET path?"}
+    RQ -->|/| RI["handleIndex(): send INDEX_HTML"]
+    RQ -->|/data| RD["handleData(): send latest JSON"]
+    RQ -->|/download.csv| RC["handleCsvDownload(): stream CSV"]
+    DB[(sampleBuffer + latest values)] --> RD
+    DB --> RC
+
+    M --> N["Enter infinite loop"]
+
+    subgraph LOOP["Main sampling/control loop"]
+        direction TD
+        N --> O[["updateStatusLed(nowMs)"]]
+        O --> P{"Sample interval reached?"}
+        P -->|No| Q["vTaskDelay(10 ms)"]
+        P -->|Yes| R[["sampleSensorIfReady()"]]
+        R --> Q
+        Q --> N
+    end
+
+    R --> S["Read FDC conf register"]
+    S --> T{"Conf read OK?"}
+    T -->|No| U["Log error and return"]
+    T -->|Yes| V{"MEAS1_DONE and MEAS2_DONE set?"}
+    V -->|No| W["Return (data not ready)"]
+    V -->|Yes| X["Read raw CH1-CH3 and CH2-CH4"]
+    X --> Y{"Raw reads OK?"}
+    Y -->|No| Z["Log measurement read error"]
+    Y -->|Yes| AA["Convert raw to pF, pushSample(), log values"]
+    AA --> DB
